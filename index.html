@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DailyLog Timesheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+      body.dark-mode {
+        background-color: #121212;
+        color: white;
+      }
+      .dark-mode .table {
+        color: white;
+      }
+      .countdown {
+        font-size: 1.2rem;
+        font-weight: bold;
+      }
+      .live-clock,
+      .custom-timer {
+        font-size: 1.1rem;
+        font-weight: bold;
+        margin-right: 20px;
+      }
+    </style>
+  </head>
+  <body class="p-4">
+    <div class="container">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>DailyLog Timesheet</h1>
+        <button class="btn btn-secondary" id="darkModeBtn">
+          Toggle Dark Mode
+        </button>
+      </div>
+
+      <!-- User Name Input -->
+      <div class="mb-3">
+        <label>User Name</label>
+        <input
+          type="text"
+          class="form-control"
+          id="userName"
+          placeholder="Enter your name"
+        />
+      </div>
+
+      <!-- Live Clock and Custom Timer -->
+      <div class="d-flex justify-content-start align-items-center mb-3">
+        <div class="live-clock" id="liveClock">Time: --:--:--</div>
+        <div class="custom-timer">
+          <input
+            type="number"
+            id="customTimerInput"
+            placeholder="Set Timer (min)"
+            class="form-control d-inline"
+            style="width: 150px"
+          />
+          <button
+            class="btn btn-outline-primary btn-sm ms-2"
+            onclick="startCustomTimer()"
+          >
+            Start Timer
+          </button>
+          <span id="customTimerDisplay" class="ms-2 text-danger fw-bold"></span>
+        </div>
+      </div>
+
+      <!-- Timesheet Input -->
+      <div class="mb-3">
+        <label>Date</label>
+        <input type="date" class="form-control" id="date" />
+        <label>Hours Worked</label>
+        <input type="number" class="form-control" id="hours" />
+        <label>Task Summary</label>
+        <input type="text" class="form-control" id="task" />
+        <label>Task Status</label>
+        <select class="form-control" id="status">
+          <option>Complete</option>
+          <option>In Progress</option>
+          <option>Incomplete</option>
+        </select>
+        <button class="btn btn-primary mt-3" onclick="addEntry()">
+          Add Entry
+        </button>
+      </div>
+
+      <!-- Countdown & Export -->
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="countdown" id="countdown"></div>
+        <div class="dropdown">
+          <button
+            class="btn btn-success dropdown-toggle"
+            data-bs-toggle="dropdown"
+          >
+            Export
+          </button>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="#" onclick="exportPDF()"
+                >Export as PDF</a
+              >
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" onclick="exportDOC()"
+                >Export as DOC</a
+              >
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" onclick="exportText()"
+                >Export as Text</a
+              >
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <input
+        class="form-control my-3"
+        id="search"
+        placeholder="Search..."
+        onkeyup="filterEntries()"
+      />
+
+      <!-- Table -->
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Hours</th>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="logTable"></tbody>
+      </table>
+
+      <!-- Summary -->
+      <div class="mt-4">
+        <h5>Summary</h5>
+        <p id="summary"></p>
+      </div>
+    </div>
+
+    <script>
+      let entries = JSON.parse(localStorage.getItem("entries")) || [];
+      let customTimerInterval;
+      let userName = localStorage.getItem("userName") || "";
+
+      // Initialize user name field
+      document.getElementById("userName").value = userName;
+
+      // Save user name when changed
+      document
+        .getElementById("userName")
+        .addEventListener("change", function () {
+          userName = this.value;
+          localStorage.setItem("userName", userName);
+        });
+
+      function addEntry() {
+        const date = document.getElementById("date").value;
+        const hours = parseFloat(document.getElementById("hours").value);
+        const task = document.getElementById("task").value;
+        const status = document.getElementById("status").value;
+
+        if (!date || isNaN(hours) || !task)
+          return alert("Please fill all fields correctly.");
+
+        entries.push({ date, hours, task, status });
+        saveAndDisplay();
+      }
+
+      function saveAndDisplay() {
+        localStorage.setItem("entries", JSON.stringify(entries));
+        displayEntries();
+        updateSummary();
+      }
+
+      function displayEntries() {
+        const tbody = document.getElementById("logTable");
+        tbody.innerHTML = "";
+        entries.forEach((e, i) => {
+          tbody.innerHTML += `
+            <tr>
+              <td contenteditable="true" oninput="editEntry(${i}, 'date', this.innerText)">${
+            e.date
+          }</td>
+              <td contenteditable="true" oninput="editEntry(${i}, 'hours', this.innerText)">${
+            e.hours
+          }</td>
+              <td contenteditable="true" oninput="editEntry(${i}, 'task', this.innerText)">${
+            e.task
+          }</td>
+              <td>
+                <select onchange="editEntry(${i}, 'status', this.value)">
+                  <option ${
+                    e.status === "Complete" ? "selected" : ""
+                  }>Complete</option>
+                  <option ${
+                    e.status === "In Progress" ? "selected" : ""
+                  }>In Progress</option>
+                  <option ${
+                    e.status === "Incomplete" ? "selected" : ""
+                  }>Incomplete</option>
+                </select>
+              </td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteEntry(${i})">Delete</button></td>
+            </tr>`;
+        });
+      }
+
+      function editEntry(index, key, value) {
+        entries[index][key] = key === "hours" ? parseFloat(value) || 0 : value;
+        saveAndDisplay();
+      }
+
+      function deleteEntry(index) {
+        entries.splice(index, 1);
+        saveAndDisplay();
+      }
+
+      function updateSummary() {
+        const totalHours = entries.reduce((sum, e) => sum + (e.hours || 0), 0);
+        const completed = entries.filter((e) => e.status === "Complete").length;
+        const pending = entries.filter((e) => e.status !== "Complete").length;
+
+        document.getElementById("summary").innerHTML = `
+    <table class="table table-striped table-bordered w-50">
+      <thead class="table-dark">
+        <tr>
+          <th>Total Hours</th>
+          <th>Completed Tasks</th>
+          <th>Pending Tasks</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${totalHours.toFixed(2)}</td>
+          <td>${completed}</td>
+          <td>${pending}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+      }
+
+      function filterEntries() {
+        const keyword = document.getElementById("search").value.toLowerCase();
+        const filtered = entries.filter(
+          (e) =>
+            e.date.includes(keyword) ||
+            e.task.toLowerCase().includes(keyword) ||
+            e.status.toLowerCase().includes(keyword)
+        );
+        const tbody = document.getElementById("logTable");
+        tbody.innerHTML = "";
+        filtered.forEach((e, i) => {
+          tbody.innerHTML += `
+            <tr>
+              <td>${e.date}</td>
+              <td>${e.hours}</td>
+              <td>${e.task}</td>
+              <td>${e.status}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteEntry(${i})">Delete</button></td>
+            </tr>`;
+        });
+      }
+
+      function countdownTimer() {
+        setInterval(() => {
+          const total = 8 * 60 * 60;
+          const logged =
+            entries.reduce((sum, e) => sum + (e.hours || 0), 0) * 60 * 60;
+          const remaining = Math.max(0, total - logged);
+          const hrs = Math.floor(remaining / 3600);
+          const mins = Math.floor((remaining % 3600) / 60);
+          const secs = remaining % 60;
+          document.getElementById(
+            "countdown"
+          ).innerText = `Time Remaining: ${hrs}h ${mins}m ${secs}s`;
+        }, 1000);
+      }
+
+      function updateLiveClock() {
+        setInterval(() => {
+          const now = new Date();
+          const hrs = String(now.getHours()).padStart(2, "0");
+          const mins = String(now.getMinutes()).padStart(2, "0");
+          const secs = String(now.getSeconds()).padStart(2, "0");
+          document.getElementById(
+            "liveClock"
+          ).innerText = `Time: ${hrs}:${mins}:${secs}`;
+        }, 1000);
+      }
+
+      function startCustomTimer() {
+        clearInterval(customTimerInterval);
+        const mins = parseInt(
+          document.getElementById("customTimerInput").value
+        );
+        if (isNaN(mins) || mins <= 0) {
+          alert("Please enter a valid number of minutes.");
+          return;
+        }
+
+        let totalSeconds = mins * 60;
+        const display = document.getElementById("customTimerDisplay");
+
+        customTimerInterval = setInterval(() => {
+          const m = Math.floor(totalSeconds / 60);
+          const s = totalSeconds % 60;
+          display.innerText = `${m}m ${s}s`;
+          if (--totalSeconds < 0) {
+            clearInterval(customTimerInterval);
+            display.innerText = "Time's up!";
+            alert("⏰ Timer Finished!");
+          }
+        }, 1000);
+      }
+
+      document.getElementById("darkModeBtn").addEventListener("click", () => {
+        document.body.classList.toggle("dark-mode");
+      });
+
+      // Export Features
+      function exportPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Page border
+        doc.rect(
+          5,
+          5,
+          doc.internal.pageSize.width - 10,
+          doc.internal.pageSize.height - 10
+        );
+
+        // Header with title, user name and generation date
+        doc.setFontSize(16);
+        doc.setFont(undefined, "bold");
+        doc.text("DailyLog Timesheet", 105, 15, { align: "center" });
+
+        doc.setFontSize(12);
+        doc.text(`User: ${userName || "Not specified"}`, 105, 22, {
+          align: "center",
+        });
+
+        doc.setFontSize(10);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 29, {
+          align: "center",
+        });
+
+        // Table settings
+        const startY = 40;
+        const margin = 15;
+        const rowHeight = 10;
+        const headers = ["No.", "Date", "Hours", "Task", "Status"];
+        const columnWidths = [10, 30, 20, 100, 30];
+
+        // Create table headers
+        doc.setFontSize(12);
+        doc.setFont(undefined, "bold");
+        let x = margin;
+        headers.forEach((header, i) => {
+          doc.text(header, x, startY);
+          x += columnWidths[i];
+        });
+
+        // Draw horizontal line below headers
+        doc.line(
+          margin,
+          startY + 5,
+          margin + columnWidths.reduce((a, b) => a + b),
+          startY + 5
+        );
+
+        // Add table rows
+        doc.setFont(undefined, "normal");
+        doc.setFontSize(10);
+        let y = startY + rowHeight;
+
+        entries.forEach((entry, index) => {
+          // Alternate row background color
+          if (index % 2 === 0) {
+            doc.setFillColor(240, 240, 240);
+            doc.rect(
+              margin,
+              y - 5,
+              columnWidths.reduce((a, b) => a + b),
+              rowHeight,
+              "F"
+            );
+          }
+
+          // Row number
+          doc.text((index + 1).toString(), margin, y);
+
+          // Date column
+          doc.text(entry.date, margin + columnWidths[0], y);
+
+          // Hours column
+          doc.text(
+            entry.hours.toString(),
+            margin + columnWidths[0] + columnWidths[1],
+            y
+          );
+
+          // Task column (with text wrapping)
+          const taskLines = doc.splitTextToSize(
+            entry.task,
+            columnWidths[3] - 2
+          );
+          doc.text(
+            taskLines,
+            margin + columnWidths[0] + columnWidths[1] + columnWidths[2],
+            y
+          );
+
+          // Status column
+          doc.text(
+            entry.status,
+            margin +
+              columnWidths[0] +
+              columnWidths[1] +
+              columnWidths[2] +
+              columnWidths[3],
+            y
+          );
+
+          // Draw horizontal line between rows
+          doc.line(
+            margin,
+            y + 5,
+            margin + columnWidths.reduce((a, b) => a + b),
+            y + 5
+          );
+
+          y += rowHeight;
+
+          // Add new page if needed
+          if (y > doc.internal.pageSize.height - 20) {
+            doc.addPage();
+            y = 20;
+            // Add border on new page
+            doc.rect(
+              5,
+              5,
+              doc.internal.pageSize.width - 10,
+              doc.internal.pageSize.height - 10
+            );
+            // Redraw headers on new page
+            doc.setFontSize(12);
+            doc.setFont(undefined, "bold");
+            x = margin;
+            headers.forEach((header, i) => {
+              doc.text(header, x, 15);
+              x += columnWidths[i];
+            });
+            doc.setFont(undefined, "normal");
+            doc.setFontSize(10);
+            y = 25;
+          }
+        });
+
+        // Add summary at the end
+        const totalHours = entries.reduce((sum, e) => sum + (e.hours || 0), 0);
+        doc.setFontSize(12);
+        doc.text(`Total Hours: ${totalHours.toFixed(2)}`, margin, y + 10);
+
+        doc.save(`DailyLog_${userName || "Timesheet"}.pdf`);
+      }
+
+      function exportDOC() {
+        let content = `DailyLog Timesheet\nUser: ${
+          userName || "Not specified"
+        }\nGenerated: ${new Date().toLocaleString()}\n\n`;
+        entries.forEach((e, i) => {
+          content += `${i + 1}. ${e.date} | ${e.hours}h | ${e.task} | ${
+            e.status
+          }\n`;
+        });
+        const blob = new Blob([content], { type: "application/msword" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `DailyLog_${userName || "Timesheet"}.doc`;
+        link.click();
+      }
+
+      function exportText() {
+        let content = `DailyLog Timesheet\nUser: ${
+          userName || "Not specified"
+        }\nGenerated: ${new Date().toLocaleString()}\n\n`;
+        entries.forEach((e, i) => {
+          content += `${i + 1}. ${e.date} | ${e.hours}h | ${e.task} | ${
+            e.status
+          }\n`;
+        });
+        const blob = new Blob([content], { type: "text/plain" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `DailyLog_${userName || "Timesheet"}.txt`;
+        link.click();
+      }
+
+      window.addEventListener("load", () => {
+        saveAndDisplay();
+        countdownTimer();
+        updateLiveClock();
+      });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
